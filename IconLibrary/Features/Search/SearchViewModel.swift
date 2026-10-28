@@ -62,6 +62,30 @@ final class SearchViewModel: ObservableObject {
         performSearch()
     }
 
+    /// Re-runs the current query in place (pull-to-refresh), without clearing the
+    /// list or flashing the full-screen loading state.
+    func refreshSearchResults() async {
+        let term = searchTerm.trimmingCharacters(in: .whitespaces)
+        guard !term.isEmpty else { return }
+
+        if let link = AppStoreLink(term) {
+            if case .success(let item) = await AppStoreAPI.lookup(id: link.id, country: link.country ?? selectedCountryCode) {
+                var fresh = item
+                fresh.countryCode = link.country ?? selectedCountryCode
+                if let index = searchResults.firstIndex(where: { $0.id == fresh.id }) {
+                    searchResults[index] = fresh
+                } else {
+                    searchResults = [fresh]
+                }
+            }
+            return
+        }
+
+        if case .success(let items) = await AppStoreAPI.search(term: term, country: selectedCountryCode) {
+            searchResults = items
+        }
+    }
+
     func clearRecentSearches() {
         SearchHistory.shared.removeAll()
         recentSearches = []

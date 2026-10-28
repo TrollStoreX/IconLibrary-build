@@ -110,6 +110,7 @@ struct AppDetailView: View {
             }
             .padding(.vertical)
         }
+        .refreshable { await refreshDetails() }
         .safeAreaInset(edge: .bottom, alignment: .trailing) {
             FloatingSaveButton(titleKey: "save_icon", systemImage: "square.and.arrow.down", isWorking: isSaving) {
                 saveIcon()

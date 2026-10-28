@@ -91,6 +91,7 @@ struct SearchView: View {
             }
         }
         .cardListStyle()
+        .refreshable { await viewModel.refreshSearchResults() }
     }
 
     private var regionButton: some ToolbarContent {
