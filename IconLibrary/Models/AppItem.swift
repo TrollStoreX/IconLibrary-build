@@ -62,20 +62,26 @@ struct AppDetails: Codable, Hashable {
     /// When the current version was released (App Store "currentVersionReleaseDate").
     let currentVersionReleaseDate: String?
 
-    /// Date string formatted for display in the UI, e.g. "2026-10-12".
+    /// Date and time string formatted for display in the UI, e.g. "2026-10-23 09:46:47".
+    /// The App Store returns `currentVersionReleaseDate` as an ISO8601 timestamp with
+    /// second-level precision (UTC), converted here to the device's local time zone.
     var formattedUpdateDate: String? {
         guard let raw = currentVersionReleaseDate, !raw.isEmpty else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var date = formatter.date(from: raw)
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = parser.date(from: raw)
         if date == nil {
-            formatter.formatOptions = [.withInternetDateTime]
-            date = formatter.date(from: raw)
+            parser.formatOptions = [.withInternetDateTime]
+            date = parser.date(from: raw)
         }
-        guard let date else { return raw }
+        guard let date else {
+            // Not ISO8601 — hand back whatever the API gave us rather than nothing.
+            return raw.replacingOccurrences(of: "T", with: " ").replacingOccurrences(of: "Z", with: "")
+        }
         let display = DateFormatter()
-        display.locale = Locale(identifier: "en_US_POSIX")
-        display.dateFormat = "yyyy-MM-dd"
+        display.locale = Locale.current
+        display.timeZone = .current
+        display.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return display.string(from: date)
     }
 
