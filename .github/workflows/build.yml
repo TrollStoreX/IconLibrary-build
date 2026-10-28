@@ -1,0 +1,80 @@
+name: Build unsigned IPA
+
+# 手动触发或推送 main / tag 时构建未签名 IPA。
+# 产物：未签名 .ipa —— 装到设备前用 Sideloadly / AltStore / TrollStore 重签。
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: Build configuration
+        type: choice
+        options: [Release, Debug]
+        default: Release
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      CONFIG: ${{ github.event.inputs.configuration || 'Release' }}
+      SCHEME: IconLibrary
+      PROJECT: IconLibrary.xcodeproj
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration "$CONFIG" \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            CODE_SIGN_STYLE=Manual \
+            build 2>&1 | tee build.log
+
+      - name: Package IPA
+        id: package
+        run: |
+          APP_PATH="$(find build/Build/Products -maxdepth 3 -name '*.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then echo "::error::找不到 .app 产物"; tail -60 build.log; exit 1; fi
+          echo "app: $APP_PATH"
+          VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist" 2>/dev/null || echo 0)
+          BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist" 2>/dev/null || echo 0)
+          NAME="$(basename "$APP_PATH" .app)"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          rm -rf Payload/*.app/_CodeSignature
+          IPA="${NAME}_${VERSION}_${BUILD}_unsigned.ipa"
+          zip -qry "$IPA" Payload
+          echo "ipa=$IPA" >> "$GITHUB_OUTPUT"
+          ls -lh "$IPA"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.ipa }}
+          path: ${{ steps.package.outputs.ipa }}
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
